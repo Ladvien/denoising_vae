@@ -15,20 +15,19 @@ import os
 import sys
 
 import matplotlib.pyplot as plt
-import json
 from random import randint
 import numpy as np
-from scipy import stats
 
 # Viewing
 import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
 
 # Import Keras
 import tensorflow.keras
 from tensorflow.keras.preprocessing import image
 
 from PIL import Image
+
+import wandb
 
 
 image_tools_path = "/home/ladvien/deep_arcane/"
@@ -42,7 +41,10 @@ iu = ImageUtils()
 # TODO: Make experiment folder
 #################################
 """
+DONE:
 1. Add WandB
+
+TODO:
 2. Test results.
 3. Split train / test images.
 4. Train with dropout.
@@ -54,30 +56,41 @@ iu = ImageUtils()
 
 root_path               = "/home/ladvien/denoising_vae"
 
-continue_training       = False
-initial_epoch           = 0
-clear_logs              = True
-
 input_shape             = (128, 128, 1) # This is the shape of the image width, length, colors
 image_size              = (input_shape[0], input_shape[1]) # DOH! image_size is (height, width)
 train_test_ratio        = 0.2
-zoom_range              = 0.0
-shear_range             = 0.0
 
 # Hyperparameters
-batch_size              = 32
-epochs                  = 300
+batch_size              = 16
+epochs                  = 40
 steps_per_epoch         = 300
 validation_steps        = 50 
 optimizer               = 'adam' 
 learning_rate           = 0.001
 val_save_step_num       = 1
-dropout                 = 0.0
+dropout                 = 0.2
 
 path_to_graphs          = f'{root_path}/data/output/logs/'
 model_save_dir          = f'{root_path}/data/output/'
 train_dir               = f'{root_path}/data/train/'
 val_dir                 = f'{root_path}/data/test/'
+
+
+experiment_settings = {
+    "input_shape": input_shape,
+    "image_size": image_size,
+    "train_test_ratio": train_test_ratio,
+    "batch_size":batch_size,
+    "epochs":epochs,
+    "steps_per_epoch":steps_per_epoch,
+    "validation_steps":validation_steps,
+    "optimizer":optimizer,
+    "learning_rate":learning_rate,
+    "val_save_step_num":val_save_step_num,
+    "dropout":dropout,
+}
+
+wandb.init(config=experiment_settings, project="deep-denoiser")
 
 #################################
 # Get Train Files
@@ -194,6 +207,8 @@ model.compile(
     optimizer = selected_optimizer,
     metrics = ['accuracy']
 )
+# wandb.watch(model)
+
 
 best_model_weights = model_save_dir + 'model.h5'
 
@@ -261,6 +276,7 @@ for epoch in range(epochs):
         if step % 10 == 0:
             train_acc = train_acc_metric.result()
             print(f"Epoch: {epoch}, Step: {step}, Loss: {loss_value}, Accuracy: {float(train_acc)}")
+            wandb.log({"loss": loss_value, "accuracy": train_acc})
 
     # Reset training metrics at the end of each epoch
     train_acc_metric.reset_states()
@@ -297,29 +313,32 @@ print('Weights Saved')
 # 3. Take the mode of the predictions of each class.
 # 4. Compare the prediction mode against actual class.
 
+noise_file_paths = iu.get_image_files_recursively(train_dir + "noise/")
 
-input_path = "/home/ladvien/deep_arcane/images/0_raw/6_resized/"
-file_paths = iu.get_image_files_recursively(input_path)
+denoised_batch = []
+noised_batch = []
 
-sorted_path = "/home/ladvien/deep_arcane/images/0_raw/sorted"
-symbol_path = f"{sorted_path}/bold_symbol/"
-non_symbol_path = f"{sorted_path}/non_bold_symbol/"
-    
-make_dir(symbol_path)
-make_dir(non_symbol_path)
+random_index = [randint(0, len(noise_file_paths) -1) for x in range(0, batch_size)]
+random_file_paths = [noise_file_paths[i] for i in random_index]
 
-for file_path in file_paths:
+for file_path in random_file_paths:
+
+    noise_path = file_path.replace("noise", "clear")
+    print(f"Denoising {noise_path}")
+    print(f"Comparing {file_path}")
     
-    print(f"Classifying {file_path}")
-    filename = file_path.split("/")[-1]
+    denoised_batch.append(np.array(Image.open(file_path).convert("1"), dtype=int))
+    noised_batch.append(np.array(Image.open(noise_path).convert("1"), dtype=int))    
     
-    x = image.load_img(file_path, grayscale=True, target_size = input_shape)
-    x = image.img_to_array(x)
-    x = np.expand_dims(x, axis=0)
-    result = model.predict_classes(x, batch_size=1)[0][0]
-    
-    
-    if result > 0:
-        os.system(f"cp {file_path} {symbol_path}{filename}")
-    else:
-        os.system(f"cp {file_path} {non_symbol_path}{filename}")
+    if len(denoised_batch) > batch_size - 1:
+        break
+
+denoised_batch = np.array(denoised_batch)
+denoised_batch = model.predict(denoised_batch.reshape([8, 128, 128, 1]))
+
+for i in range(0, batch_size):
+
+    plt.imshow(noised_batch[i], cmap="gray")    
+    plt.show()
+    plt.imshow(denoised_batch[i], cmap="gray")
+    plt.show()
