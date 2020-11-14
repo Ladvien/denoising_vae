@@ -13,8 +13,10 @@ import tensorflow as tf
 # Import needed tools.
 import os
 import sys
+
 import matplotlib.pyplot as plt
 import json
+from random import randint
 import numpy as np
 from scipy import stats
 
@@ -30,7 +32,7 @@ from tensorflow.compat.v1.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard, CSVLogger, ReduceLROnPlateau
 from tensorflow.keras.preprocessing import image
 
-# import cv2
+from PIL import Image
 
 
 image_tools_path = "/home/ladvien/deep_arcane/"
@@ -43,15 +45,13 @@ iu = ImageUtils()
 #################################
 # TODO: Make experiment folder
 #################################
-# 1. Generate a unique id
-# 2. Save weighs to folder
-# 3. Save tensorboard logs and open tensorboard to this folder
+
 
 #################################
 # Training Parameters
 #################################
 
-root_path               = "/home/ladvien/deep_arcane/4_bold_symbol_classifier"
+root_path               = "/home/ladvien/denoising_vae"
 
 continue_training       = False
 initial_epoch           = 0
@@ -64,19 +64,25 @@ zoom_range              = 0.0
 shear_range             = 0.0
 
 # Hyperparameters
-batch_size              = 32
-epochs                  = 30
+batch_size              = 64
+epochs                  = 300
 steps_per_epoch         = 300
 validation_steps        = 50 
 optimizer               = 'adam' 
 learning_rate           = 0.001
 val_save_step_num       = 1
-dropout                 = 0.15
+dropout                 = 0.0
 
 path_to_graphs          = f'{root_path}/data/output/logs/'
 model_save_dir          = f'{root_path}/data/output/'
-train_dir               = f'{root_path}/train/'
-val_dir                 = f'{root_path}/test/'
+train_dir               = f'{root_path}/data/train/'
+val_dir                 = f'{root_path}/data/test/'
+
+#################################
+# Get Train Files
+#################################
+clear_file_paths = iu.get_image_files_recursively(train_dir + "clear/")
+
 
 #################################
 # Helper functions
@@ -122,81 +128,47 @@ elif input_shape[2] == 4:
 
 print(f'Color mode: {color_mode}')
 
-augs_gen = ImageDataGenerator (
-    shear_range = shear_range,
-    brightness_range = [0.9, 1.1],
-    rotation_range = 70,
-    # width_shift_range = 0.1,
-    # height_shift_range = 0.1,
-    zoom_range = zoom_range,        
-    horizontal_flip = True,
-    validation_split = train_test_ratio,
-    fill_mode = 'nearest'
-)  
-
-train_gen = augs_gen.flow_from_directory (
-    train_dir,
-    target_size = image_size, # THIS IS HEIGHT, WIDTH
-    batch_size = batch_size,
-    class_mode = 'binary',
-    shuffle = True,
-    color_mode = color_mode
-)
-
-test_gen = augs_gen.flow_from_directory (
-    val_dir,
-    target_size = image_size,
-    batch_size = batch_size,
-    class_mode = 'binary',
-    shuffle = False,
-    color_mode = color_mode
-)
-
-#################################
-# Check Generator Output
-#################################
-x_batch, y_batch = next(test_gen)
-for i in range(x_batch.shape[0]):
-    plt.imshow(x_batch[i].astype('uint8'))
-    plt.show()
-
-#################################
-# Save Class IDs
-#################################
-classes_json = train_gen.class_indices
-num_classes = len(train_gen.class_indices)
-
-with open(model_save_dir + 'classes.json', 'w') as fp:
-    json.dump(classes_json, fp, indent = 4)
-
 #################################
 # Model Building
 #################################
 
 def test_model(opt, input_shape, dropout = 0.0):
+    
+    initializer = tf.keras.initializers.GlorotNormal()
+    # Encoder
     model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Conv2D(64, (3, 3), input_shape = input_shape))
+    model.add(tf.keras.layers.Conv2D(128, (3, 3), input_shape = input_shape, padding="same"))
     model.add(tf.keras.layers.Activation('relu'))
     model.add(tf.keras.layers.Dropout(dropout))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
     
-    model.add(tf.keras.layers.Conv2D(128, (3, 3)))
+    model.add(tf.keras.layers.Conv2D(64, (3, 3), padding="same"))
     model.add(tf.keras.layers.Activation('relu'))
     model.add(tf.keras.layers.Dropout(dropout))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
     
-    model.add(tf.keras.layers.Conv2D(512, (3, 3)))
+    model.add(tf.keras.layers.Conv2D(32, (3, 3), padding="same"))
     model.add(tf.keras.layers.Activation('relu'))
     model.add(tf.keras.layers.Dropout(dropout))
     model.add(tf.keras.layers.MaxPooling2D(pool_size=(2, 2)))
     
-    model.add(tf.keras.layers.Flatten())  # this converts our 3D feature maps to 1D feature vectors
-    model.add(tf.keras.layers.Dense(1024))
+    # Decoder
+    model.add(tf.keras.layers.Conv2D(32, (3, 3), padding="same"))
     model.add(tf.keras.layers.Activation('relu'))
-    
     model.add(tf.keras.layers.Dropout(dropout))
+    model.add(tf.keras.layers.UpSampling2D((2, 2)))
+
+    model.add(tf.keras.layers.Conv2D(64, (3, 3), padding="same"))
+    model.add(tf.keras.layers.Activation('relu'))
+    model.add(tf.keras.layers.Dropout(dropout))
+    model.add(tf.keras.layers.UpSampling2D((2, 2)))
     
-    model.add(tf.keras.layers.Dense(1))
+    model.add(tf.keras.layers.Conv2D(128, (3, 3), padding="same"))
+    model.add(tf.keras.layers.Activation('relu'))
+    model.add(tf.keras.layers.Dropout(dropout))
+    model.add(tf.keras.layers.UpSampling2D((2, 2)))
+    
+    model.add(tf.keras.layers.Conv2D(1, (3, 3), padding="same"))
     model.add(tf.keras.layers.Activation('sigmoid'))
     
     return model
@@ -224,76 +196,87 @@ model.compile(
     metrics = ['accuracy']
 )
 
-#################################
-# Keras Callbacks
-#################################
 best_model_weights = model_save_dir + 'model.h5'
 
-checkpoint = ModelCheckpoint(
-    best_model_weights,
-    monitor = 'val_loss',
-    verbose = 1,
-    save_best_only = True,
-    mode = 'min',
-    save_weights_only = False,
-    save_freq = val_save_step_num
-)
-
-earlystop = EarlyStopping(
-    monitor='val_loss',
-    min_delta=0.001,
-    patience=10,
-    verbose=1,
-    mode='auto'
-)
-
-tensorboard = TensorBoard(
-    log_dir = model_save_dir + '/logs',
-    histogram_freq=0,
-    batch_size=16,
-    write_graph=True,
-    write_grads=True,
-    write_images=False,
-)
-
-csvlogger = CSVLogger(
-    filename = model_save_dir + 'training.csv',
-    separator = ',',
-    append = False
-)
-
-reduce = ReduceLROnPlateau(
-    monitor='val_loss',
-    factor=0.5,
-    patience=40,
-    verbose=1, 
-    mode='auto',
-    cooldown=1 
-)
-
-callbacks = [earlystop]
 
 #################################
 # Execute Training
 #################################
 
-if continue_training:
-    model.load_weights(best_model_weights)
-    model_score = model.evaluate_generator(test_gen, steps = validation_steps)
+import time
+loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
-    print('Model Test Loss:', model_score[0])
-    print('Model Test Accuracy:', model_score[1])
+train_acc_metric = tf.keras.metrics.BinaryAccuracy()
+val_acc_metric = tf.keras.metrics.BinaryAccuracy()
 
 
-history = model.fit_generator(
-    train_gen, 
-    steps_per_epoch  = steps_per_epoch, 
-    validation_data  = test_gen,
-    validation_steps = validation_steps,
-    epochs = epochs, 
-    verbose = 1,
-    callbacks = callbacks
-)
+def get_batch(file_paths, batch_size, verbose = 0):
+    
+    # Batches to return.
+    clear_batch = []
+    noise_batch = []
+    
+    # Get random files
+    file_nums_to_load = [randint(0, len(file_paths)) - 1 for x in range(0, batch_size)]
+    
+    # Loop through the batch size, loading files.
+    for i in range(0, batch_size):
+        
+        # Create matching file paths.
+        clear_image_file_path = file_paths[file_nums_to_load[i]]
+        noise_image_file_path = file_paths[file_nums_to_load[i]].replace("clear", "noise")
+        if verbose > 0:
+            print(f"Loading clear file: {clear_image_file_path}")
+            print(f"Loading noise file: {noise_image_file_path}")
+        
+        # Load CLEAR image, convert to B&W, and put into training batch.
+        clear_image = Image.open(clear_image_file_path).convert("1")
+        clear_batch.append(np.array(clear_image, dtype=int))
+        
+        # Load NOISE image, convert to B&W, and put into training batch.
+        noise_image = Image.open(noise_image_file_path).convert("1")
+        noise_batch.append(np.array(noise_image, dtype=int))
+        
+    return (np.array(noise_batch), np.array(clear_batch))
+
+for epoch in range(epochs):
+    print("\nStart of epoch %d" % (epoch,))
+    start_time = time.time()
+
+    # Iterate over the batches of the dataset.
+    for step in range(0, steps_per_epoch):
+        
+        # Load training batch.
+        x_batch_train, y_batch_train = get_batch(clear_file_paths, batch_size)
+        with tf.GradientTape() as tape:
+            logits = model(x_batch_train, training=True)
+            loss_value = loss_fn(y_batch_train.reshape(logits.shape), logits)
+            
+        grads = tape.gradient(loss_value, model.trainable_weights)
+        selected_optimizer.apply_gradients(zip(grads, model.trainable_weights))
+    
+        # Update training metric.
+        train_acc_metric.update_state(y_batch_train.reshape(logits.shape), logits)
+    
+    # Display metrics at the end of each epoch.
+    train_acc = train_acc_metric.result()
+    print(f"Training loss: {loss_value}")
+    print("Training acc over epoch: %.4f" % (float(train_acc),))
+
+    # Reset training metrics at the end of each epoch
+    train_acc_metric.reset_states()
+
+    # # Run a validation loop at the end of each epoch.
+    # for x_batch_val, y_batch_val in val_dataset:
+    #     val_logits = model(x_batch_val, training=False)
+    #     # Update val metrics
+    #     val_acc_metric.update_state(y_batch_val, val_logits)
+        
+    # val_acc = val_acc_metric.result()
+    # val_acc_metric.reset_states()
+    # print("Validation acc: %.4f" % (float(val_acc),))
+    # print("Time taken: %.2fs" % (time.time() - start_time))
+
 
 #################################
 # Save Model
@@ -305,16 +288,6 @@ with open(model_save_dir + 'model.json', 'w') as json_file:
 model.save(model_save_dir + 'model.h5')
 print('Weights Saved')
 
-#################################
-# Evaluate Training
-#################################
-model.load_weights(best_model_weights)
-model_score = model.evaluate_generator(test_gen, steps = validation_steps)
-
-print('Model Test Loss:', model_score[0])
-print('Model Test Accuracy:', model_score[1])
-    
-
 
 #################################
 # Test Image
@@ -325,9 +298,6 @@ print('Model Test Accuracy:', model_score[1])
 # 3. Take the mode of the predictions of each class.
 # 4. Compare the prediction mode against actual class.
 
-
-
-rev_lookup = dict([[v,k] for k,v in classes_json.items()])
 
 input_path = "/home/ladvien/deep_arcane/images/0_raw/6_resized/"
 file_paths = iu.get_image_files_recursively(input_path)
