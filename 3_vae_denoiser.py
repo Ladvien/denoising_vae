@@ -26,10 +26,6 @@ import matplotlib.image as mpimg
 
 # Import Keras
 import tensorflow.keras
-from tensorflow.keras.layers import Dense,Flatten, Dropout, Lambda
-from tensorflow.keras.layers import SeparableConv2D, BatchNormalization, MaxPooling2D, Conv2D, Activation
-from tensorflow.compat.v1.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, TensorBoard, CSVLogger, ReduceLROnPlateau
 from tensorflow.keras.preprocessing import image
 
 from PIL import Image
@@ -45,7 +41,12 @@ iu = ImageUtils()
 #################################
 # TODO: Make experiment folder
 #################################
-
+"""
+1. Add WandB
+2. Test results.
+3. Split train / test images.
+4. Train with dropout.
+"""
 
 #################################
 # Training Parameters
@@ -64,7 +65,7 @@ zoom_range              = 0.0
 shear_range             = 0.0
 
 # Hyperparameters
-batch_size              = 64
+batch_size              = 32
 epochs                  = 300
 steps_per_epoch         = 300
 validation_steps        = 50 
@@ -132,9 +133,7 @@ print(f'Color mode: {color_mode}')
 # Model Building
 #################################
 
-def test_model(opt, input_shape, dropout = 0.0):
-    
-    initializer = tf.keras.initializers.GlorotNormal()
+def vae_model(opt, input_shape, dropout = 0.0):
     # Encoder
     model = tf.keras.models.Sequential()
     model.add(tf.keras.layers.Conv2D(128, (3, 3), input_shape = input_shape, padding="same"))
@@ -187,7 +186,7 @@ def get_optimizer(optimizer, learning_rate = 0.001):
 
 selected_optimizer = get_optimizer(optimizer, learning_rate)
 
-model = test_model(selected_optimizer, input_shape)
+model = vae_model(selected_optimizer, input_shape)
 model.summary()
 
 model.compile(
@@ -258,10 +257,10 @@ for epoch in range(epochs):
         # Update training metric.
         train_acc_metric.update_state(y_batch_train.reshape(logits.shape), logits)
     
-    # Display metrics at the end of each epoch.
-    train_acc = train_acc_metric.result()
-    print(f"Training loss: {loss_value}")
-    print("Training acc over epoch: %.4f" % (float(train_acc),))
+        # Display metrics at the end of each epoch.
+        if step % 10 == 0:
+            train_acc = train_acc_metric.result()
+            print(f"Epoch: {epoch}, Step: {step}, Loss: {loss_value}, Accuracy: {float(train_acc)}")
 
     # Reset training metrics at the end of each epoch
     train_acc_metric.reset_states()
