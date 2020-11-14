@@ -17,18 +17,11 @@ import sys
 import matplotlib.pyplot as plt
 from random import randint
 import numpy as np
-
-# Viewing
-import matplotlib.pyplot as plt
+from PIL import Image
+import wandb
 
 # Import Keras
 import tensorflow.keras
-from tensorflow.keras.preprocessing import image
-
-from PIL import Image
-
-import wandb
-
 
 image_tools_path = "/home/ladvien/deep_arcane/"
 sys.path.append(image_tools_path)
@@ -43,11 +36,11 @@ iu = ImageUtils()
 """
 DONE:
 1. Add WandB
+2. Test results.
+4. Train with dropout.
 
 TODO:
-2. Test results.
 3. Split train / test images.
-4. Train with dropout.
 """
 
 #################################
@@ -281,17 +274,6 @@ for epoch in range(epochs):
     # Reset training metrics at the end of each epoch
     train_acc_metric.reset_states()
 
-    # # Run a validation loop at the end of each epoch.
-    # for x_batch_val, y_batch_val in val_dataset:
-    #     val_logits = model(x_batch_val, training=False)
-    #     # Update val metrics
-    #     val_acc_metric.update_state(y_batch_val, val_logits)
-        
-    # val_acc = val_acc_metric.result()
-    # val_acc_metric.reset_states()
-    # print("Validation acc: %.4f" % (float(val_acc),))
-    # print("Time taken: %.2fs" % (time.time() - start_time))
-
 
 #################################
 # Save Model
@@ -305,40 +287,42 @@ print('Weights Saved')
 
 
 #################################
-# Test Image
+# Test Model
 #################################
 
-# 1. Get each class and label.
-# 2. Generate nubmber of n predictions for each class.
-# 3. Take the mode of the predictions of each class.
-# 4. Compare the prediction mode against actual class.
+train_data_path = train_dir + "noise/"
+input_path = "/home/ladvien/Desktop/da_output_samps/rare-dragon-58/"
 
-noise_file_paths = iu.get_image_files_recursively(train_dir + "noise/")
-
-denoised_batch = []
-noised_batch = []
-
-random_index = [randint(0, len(noise_file_paths) -1) for x in range(0, batch_size)]
-random_file_paths = [noise_file_paths[i] for i in random_index]
-
-for file_path in random_file_paths:
-
-    noise_path = file_path.replace("noise", "clear")
-    print(f"Denoising {noise_path}")
-    print(f"Comparing {file_path}")
+def denoise_random_images_in_folder(path, batch_size):
+    noise_file_paths = iu.get_image_files_recursively(path)
     
-    denoised_batch.append(np.array(Image.open(file_path).convert("1"), dtype=int))
-    noised_batch.append(np.array(Image.open(noise_path).convert("1"), dtype=int))    
+    denoised_batch = []
+    noised_batch = []
     
-    if len(denoised_batch) > batch_size - 1:
-        break
+    random_index = [randint(0, len(noise_file_paths) -1) for x in range(0, batch_size)]
+    random_file_paths = [noise_file_paths[i] for i in random_index]
+    
+    for file_path in random_file_paths:
+    
+        noise_path = file_path
+        print(f"Denoising {noise_path}")
+        print(f"Comparing {file_path}")
+        
+        denoised_batch.append(np.array(Image.open(file_path).convert("1"), dtype=int))
+        noised_batch.append(np.array(Image.open(noise_path).convert("1"), dtype=int))    
+        
+        if len(denoised_batch) > batch_size - 1:
+            break
+    
+    denoised_batch = np.array(denoised_batch)
+    denoised_batch = model.predict(denoised_batch.reshape([batch_size, image_size[0], image_size[0], 1]))
+    
+    for i in range(0, batch_size):
+        plt.imshow(noised_batch[i], cmap="gray")    
+        plt.show()
+        plt.imshow(denoised_batch[i], cmap="gray")
+        plt.show()
+        
 
-denoised_batch = np.array(denoised_batch)
-denoised_batch = model.predict(denoised_batch.reshape([8, 128, 128, 1]))
-
-for i in range(0, batch_size):
-
-    plt.imshow(noised_batch[i], cmap="gray")    
-    plt.show()
-    plt.imshow(denoised_batch[i], cmap="gray")
-    plt.show()
+denoise_random_images_in_folder(train_data_path, batch_size)
+denoise_random_images_in_folder(input_path, batch_size)

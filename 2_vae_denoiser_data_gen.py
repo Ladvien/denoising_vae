@@ -74,9 +74,9 @@ threshold               = 240
 color_range             = 30
 shape_range             = 15
 size_range              = 1
-num_pepper              = 10
-specks_per_pepper       = 6
-group_range             = 5
+num_pepper              = 20
+specks_per_pepper       = 60
+group_range             = 12
 
 image_shape             = (128, 128)
 
@@ -135,9 +135,10 @@ for file_path in file_paths:
         plt.show()
         
     try:
-        print(f"Writing file {clear_img_path}")
-        cv2.imwrite(noise_img_path + f"{counter}.png", noise_img)        
-        cv2.imwrite(clear_img_path + f"{counter}.png", clear_image)
+        file_name = f"{counter}.png"
+        print(f"Writing file {file_name}")
+        cv2.imwrite(noise_img_path + file_name, noise_img)        
+        cv2.imwrite(clear_img_path + file_name, clear_image)
     except:
         print(f"Removed: {file_path}")
 
