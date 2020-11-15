@@ -68,19 +68,19 @@ def noisy(noise_typ, image):
 #############
 
 input_path = "/home/ladvien/denoising_vae/data/extracted/"
-output_path = "/home/ladvien/denoising_vae/data/training/"
+output_path = "/home/ladvien/denoising_vae/data/train/"
 
 threshold               = 240
 color_range             = 30
-shape_range             = 15
+shape_range             = 40
 size_range              = 1
 num_pepper              = 20
-specks_per_pepper       = 60
-group_range             = 12
+specks_per_pepper       = 10
+group_range             = 50
 
-image_shape             = (128, 128)
+image_shape             = (64, 64)
 
-show                    = False
+show                    = True
 
 #############
 # Extract
@@ -104,6 +104,10 @@ for file_path in file_paths:
     outpout_file_path = output_path + file_name
     
     clear_image = cv2.imread(file_path)
+    clear_image = cv2.resize(clear_image, image_shape)
+    _, image = cv2.threshold(clear_image, 127, 255, cv2.THRESH_BINARY)
+    clear_image = cv2.cvtColor(clear_image, cv2.COLOR_BGR2RGB)
+    
     noise_img = clear_image.copy()
      
     for i in range(0, num_pepper):
@@ -130,7 +134,9 @@ for file_path in file_paths:
             radius = randint(0, size_range)
             noise_img = cv2.circle(noise_img, (x + group_x_offset, y + group_y_offset), radius, color, -1)
      
-    if show:
+        
+     
+    if show and counter < 16:
         plt.imshow(noise_img, cmap="gray")
         plt.show()
         

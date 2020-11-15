@@ -49,13 +49,13 @@ TODO:
 
 root_path               = "/home/ladvien/denoising_vae"
 
-input_shape             = (128, 128, 1) # This is the shape of the image width, length, colors
+input_shape             = (64, 64, 1) # This is the shape of the image width, length, colors
 image_size              = (input_shape[0], input_shape[1]) # DOH! image_size is (height, width)
 train_test_ratio        = 0.2
 
 # Hyperparameters
-batch_size              = 16
-epochs                  = 40
+batch_size              = 8
+epochs                  = 80
 steps_per_epoch         = 300
 validation_steps        = 50 
 optimizer               = 'adam' 
@@ -291,7 +291,7 @@ print('Weights Saved')
 #################################
 
 train_data_path = train_dir + "noise/"
-input_path = "/home/ladvien/Desktop/da_output_samps/rare-dragon-58/"
+input_path = "/home/ladvien/Desktop/da_output_samps/64x64/easy-smoke-65/"
 
 def denoise_random_images_in_folder(path, batch_size):
     noise_file_paths = iu.get_image_files_recursively(path)
@@ -326,3 +326,44 @@ def denoise_random_images_in_folder(path, batch_size):
 
 denoise_random_images_in_folder(train_data_path, batch_size)
 denoise_random_images_in_folder(input_path, batch_size)
+
+#################################
+# Clean Images
+#################################
+
+input_path =  "/home/ladvien/Desktop/da_output_samps/64x64/"
+output_path = "/home/ladvien/Desktop/da_output_samps/64x64/cleaned/"
+
+files_to_clean = iu.get_image_files_recursively(input_path)
+
+batch_to_clean = []
+clean_file_names = []
+for i, file in enumerate(files_to_clean, start=1):
+    
+    batch_to_clean.append(np.array(Image.open(file).convert("1"), dtype=int))
+    clean_file_names.append(file)
+    
+    if i % batch_size == 0:
+        
+        # Denoise the images.
+        cleaned_batch = model.predict(np.array(batch_to_clean).reshape([batch_size, image_size[0], image_size[1], 1]))
+        
+        # Write them to the new folder.
+        for j, clean_file_name in enumerate(clean_file_names):
+            
+            file_name = clean_file_name.split("/")[-1]
+            project_name = clean_file_name.split("/")[-2]
+            
+            make_dir(output_path + project_name)
+            
+            # Create the image
+            image = Image.fromarray(cleaned_batch[j].reshape(image_size[0], image_size[1]) * 255)
+            
+            clean_image_path = output_path + project_name + "/" + file_name
+            color_img = Image.new("RGB", image.size)
+            color_img.paste(image)
+            color_img.save(clean_image_path)
+
+        # Reset batch containers.
+        batch_to_clean = []
+        clean_file_names = []
